@@ -11,9 +11,9 @@ async function loadImages() {
   demoCard.className = 'card';
   demoCard.innerHTML = `
     <img src="1.jpeg" alt="Demo Image" />
-    <h3>Sample Image</h3>
-    <p>This is a preloaded image. Upload the same file to make it look like it appeared live.</p>
-    <div>No comments yet.</div>
+    <h3>Image</h3>
+    <p>This is sample image</p>
+    
   `;
   gallery.appendChild(demoCard);
 
