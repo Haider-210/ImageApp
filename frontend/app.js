@@ -1,14 +1,13 @@
 // frontend/app.js
 const API_BASE = 'https://imgapp-backend-cscjdue3dfbxhvhu.uksouth-01.azurewebsites.net/api';
 
-
 // 1) Load & display gallery
 async function loadImages() {
   const gallery = document.getElementById('gallery');
   gallery.textContent = 'Loading…';
-  const imgs = await fetch(${API_BASE}/images).then(r=>r.json());
+  const imgs = await fetch(`${API_BASE}/images`).then(r=>r.json());
   if (!imgs.length) return gallery.textContent = 'No images yet.';
-  gallery.innerHTML = imgs.map(img=>
+  gallery.innerHTML = imgs.map(img=>`
     <div class="card">
       <img src="${img.blobUrl}" alt="${img.metadata.title}" />
       <h3>${img.metadata.title}</h3>
@@ -20,10 +19,10 @@ async function loadImages() {
         <button type="submit">Post</button>
       </form>
     </div>
-  ).join('');
+  `).join('');
   // Attach comment handlers & load comments
   imgs.forEach(img=>{
-    document.querySelector(.commentForm[data-id="${img.id}"])
+    document.querySelector(`.commentForm[data-id="${img.id}"]`)
       .addEventListener('submit', handleComment);
     loadComments(img.id);
   });
@@ -31,10 +30,10 @@ async function loadImages() {
 
 // 2) Load comments
 async function loadComments(id) {
-  const el = document.getElementById(comments-${id});
-  const comms = await fetch(${API_BASE}/images/${id}/comments).then(r=>r.json());
+  const el = document.getElementById(`comments-${id}`);
+  const comms = await fetch(`${API_BASE}/images/${id}/comments`).then(r=>r.json());
   el.innerHTML = comms.length
-    ? comms.map(c=><p>${c.text} — ${c.rating}/5</p>).join('')
+    ? comms.map(c=>`<p>${c.text} — ${c.rating}/5</p>`).join('')
     : 'No comments yet.';
 }
 
@@ -43,7 +42,7 @@ async function handleComment(e) {
   e.preventDefault();
   const id = e.target.dataset.id;
   const data = { text:e.target.text.value, rating:+e.target.rating.value };
-  await fetch(${API_BASE}/images/${id}/comments, {
+  await fetch(`${API_BASE}/images/${id}/comments`, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(data)
   });
@@ -53,6 +52,9 @@ async function handleComment(e) {
 
 // 4) Upload image
 async function uploadImage(formData) {
-  const res = await fetch(${API_BASE}/images, { method:'POST', body:formData });
+  const res = await fetch(`${API_BASE}/images`, { method:'POST', body:formData });
   return res.ok ? res.json() : {};
 }
+
+// If on gallery page, auto-load images
+if (document.getElementById('gallery')) loadImages();
