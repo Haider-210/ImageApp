@@ -13,7 +13,7 @@ app.use(cors());
 app.use(express.json());
 app.use(mockAuth);
 
-// Cosmos DB setup
+// --- Cosmos DB ---
 const mongoClient = new MongoClient(process.env.COSMOS_CONN);
 let imagesCol, commentsCol;
 mongoClient.connect()
@@ -28,39 +28,21 @@ mongoClient.connect()
     process.exit(1);
   });
 
-// Blob Storage setup
+// --- Blob Storage ---
 const blobSvc = BlobServiceClient.fromConnectionString(process.env.STORAGE_CONN);
 const containerClient = blobSvc.getContainerClient('images');
 
-// Redis setup
+// --- Redis Cache ---
+//  Create client but do NOT call connect() here at top‑level
 const redisClient = redis.createClient({
-  socket: {
-    host: process.env.REDIS_HOST,
-    port: 6380,
-    tls: true
-  },
+  socket: { host: process.env.REDIS_HOST, port: 6380, tls: true },
   password: process.env.REDIS_KEY
 });
 
-// Only one connect() call, and only start server after it succeeds
-(async () => {
-  try {
-    await redisClient.connect();
-    console.log('✅ Connected to Redis');
-
-    // Now that Redis (and Cosmos) are ready, start HTTP server
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => console.log(`API listening on port ${PORT}`));
-  } catch (err) {
-    console.error('❌ Redis connection failed', err);
-    process.exit(1);
-  }
-})();
-
-// Multer for uploads
+// --- Multer for uploads ---
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Role‐check middleware
+// --- Middleware to enforce roles ---
 function requireRole(role) {
   return (req, res, next) => {
     const roles = (req.authInfo && req.authInfo.roles) || [];
@@ -69,11 +51,14 @@ function requireRole(role) {
   };
 }
 
-// GET /api/images
+// --- Routes ---
+
+// List images (with caching)
 app.get('/api/images', async (req, res) => {
   try {
     const cache = await redisClient.get('images');
     if (cache) return res.json(JSON.parse(cache));
+
     const imgs = await imagesCol.find().sort({ createdAt: -1 }).toArray();
     await redisClient.setEx('images', 30, JSON.stringify(imgs));
     res.json(imgs);
@@ -83,7 +68,7 @@ app.get('/api/images', async (req, res) => {
   }
 });
 
-// POST /api/images (upload)
+// Upload image (creators only)
 app.post(
   '/api/images',
   requireRole('creator'),
@@ -110,12 +95,13 @@ app.post(
   }
 );
 
-// GET comments
+// Get comments for image (with caching)
 app.get('/api/images/:id/comments', async (req, res) => {
   try {
     const key = `comments_${req.params.id}`;
     const cache = await redisClient.get(key);
     if (cache) return res.json(JSON.parse(cache));
+
     const comms = await commentsCol
       .find({ imageId: req.params.id })
       .sort({ timestamp: -1 })
@@ -123,12 +109,12 @@ app.get('/api/images/:id/comments', async (req, res) => {
     await redisClient.setEx(key, 30, JSON.stringify(comms));
     res.json(comms);
   } catch (err) {
-    console.error('Error in GET /api/images/:id/comments', err);
+    console.error('Error in GET comments', err);
     res.status(500).send('Error fetching comments');
   }
 });
 
-// POST comment
+// Post comment/rating (consumers only)
 app.post(
   '/api/images/:id/comments',
   requireRole('consumer'),
@@ -145,9 +131,26 @@ app.post(
       await redisClient.del(`comments_${req.params.id}`);
       res.json({ id: result.insertedId, ...comment });
     } catch (err) {
-      console.error('Error in POST /api/images/:id/comments', err);
+      console.error('Error in POST comments', err);
       res.status(500).send('Comment failed');
     }
   }
 );
+
+// ── Remove any app.listen() here ──
+
+// ── Instead, wrap Redis connect and server start in one async block ──
+;(async () => {
+  try {
+    await redisClient.connect();
+    console.log('✅ Connected to Redis');
+
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => console.log(`API listening on port ${PORT}`));
+  } catch (err) {
+    console.error('❌ Redis connection failed', err);
+    process.exit(1);
+  }
+})();
+
 
