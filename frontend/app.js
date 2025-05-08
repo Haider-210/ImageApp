@@ -1,13 +1,14 @@
 // frontend/app.js
 const API_BASE = 'https://imgapp-backend-cscjdue3dfbxhvhu.uksouth-01.azurewebsites.net/api';
 
+
 // 1) Load & display gallery
 async function loadImages() {
   const gallery = document.getElementById('gallery');
   gallery.textContent = 'Loading…';
-  const imgs = await fetch(`${API_BASE}/images`).then(r=>r.json());
+  const imgs = await fetch(${API_BASE}/images).then(r=>r.json());
   if (!imgs.length) return gallery.textContent = 'No images yet.';
-  gallery.innerHTML = imgs.map(img=>`
+  gallery.innerHTML = imgs.map(img=>
     <div class="card">
       <img src="${img.blobUrl}" alt="${img.metadata.title}" />
       <h3>${img.metadata.title}</h3>
@@ -19,11 +20,10 @@ async function loadImages() {
         <button type="submit">Post</button>
       </form>
     </div>
-  `).join('');
-
+  ).join('');
   // Attach comment handlers & load comments
   imgs.forEach(img=>{
-    document.querySelector(`.commentForm[data-id="${img.id}"]`)
+    document.querySelector(.commentForm[data-id="${img.id}"])
       .addEventListener('submit', handleComment);
     loadComments(img.id);
   });
@@ -31,10 +31,10 @@ async function loadImages() {
 
 // 2) Load comments
 async function loadComments(id) {
-  const el = document.getElementById(`comments-${id}`);
-  const comms = await fetch(`${API_BASE}/images/${id}/comments`).then(r=>r.json());
+  const el = document.getElementById(comments-${id});
+  const comms = await fetch(${API_BASE}/images/${id}/comments).then(r=>r.json());
   el.innerHTML = comms.length
-    ? comms.map(c=>`<p>${c.text} — ${c.rating}/5</p>`).join('')
+    ? comms.map(c=><p>${c.text} — ${c.rating}/5</p>).join('')
     : 'No comments yet.';
 }
 
@@ -43,7 +43,7 @@ async function handleComment(e) {
   e.preventDefault();
   const id = e.target.dataset.id;
   const data = { text:e.target.text.value, rating:+e.target.rating.value };
-  await fetch(`${API_BASE}/images/${id}/comments`, {
+  await fetch(${API_BASE}/images/${id}/comments, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(data)
   });
@@ -51,36 +51,8 @@ async function handleComment(e) {
   loadComments(id);
 }
 
-// 4) Upload image (with demo injection hack)
+// 4) Upload image
 async function uploadImage(formData) {
-  const res = await fetch(`${API_BASE}/images`, { method:'POST', body:formData });
-  const data = res.ok ? await res.json() : {};
-
-  // Demo-only: open gallery and inject the new image immediately
-  if (window.location.pathname.endsWith('creator.html')) {
-    const win = window.open('index.html', '_blank');
-    win.addEventListener('load', () => {
-      const gallery = win.document.getElementById('gallery');
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.innerHTML = `
-        <img src="${data.blobUrl}" alt="${data.metadata.title}" />
-        <h3>${data.metadata.title}</h3>
-        <p>${data.metadata.description}</p>
-        <div id="comments-${data.id}">No comments yet.</div>
-        <form data-id="${data.id}" class="commentForm">
-          <input name="text" placeholder="Comment" required />
-          <input name="rating" type="number" min="1" max="5" required />
-          <button type="submit">Post</button>
-        </form>
-      `;
-      gallery.prepend(card);
-      card.querySelector('.commentForm').addEventListener('submit', handleComment);
-    });
-  }
-
-  return data;
+  const res = await fetch(${API_BASE}/images, { method:'POST', body:formData });
+  return res.ok ? res.json() : {};
 }
-
-// If on gallery page, auto-load images
-if (document.getElementById('gallery')) loadImages();
