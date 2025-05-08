@@ -1,3 +1,5 @@
+const API_BASE = 'https://delightful-stone-0c4df0803.6.azurestaticapps.net';
+
 async function getToken() {
   const resp = await fetch('/.auth/me');
   const arr = await resp.json();
