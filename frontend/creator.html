@@ -24,28 +24,9 @@
       e.preventDefault();
       const form = e.target;
       const data = new FormData(form);
-
       try {
-        // 1) Perform the upload
         const res = await uploadImage(data);
         document.getElementById('uploadResult').textContent = '✅ Uploaded ID: ' + res.id;
-
-        // 2) Open consumer gallery in new tab
-        const win = window.open('index.html', '_blank');
-
-        // 3) When gallery loads, inject the new image card
-        win.addEventListener('load', () => {
-          const gallery = win.document.getElementById('gallery');
-          const card = document.createElement('div');
-          card.className = 'image-card';
-          card.innerHTML = `
-            <h3>${res.metadata.title}</h3>
-            <p>${res.metadata.description}</p>
-            <img src="${res.blobUrl}" style="max-width:200px;display:block;margin:10px auto;" />
-          `;
-          gallery.prepend(card);
-        });
-
         form.reset();
       } catch (err) {
         document.getElementById('uploadResult').textContent = '❌ ' + err.message;
