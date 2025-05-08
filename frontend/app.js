@@ -1,5 +1,6 @@
 // frontend/app.js
-const API_BASE = 'https://imgapp-backend.azurewebsites.net/api';
+const API_BASE = 'https://imgapp-backend-cscjdue3dfbxhvhu.uksouth-01.azurewebsites.net/api';
+
 
 // 1) Load & display gallery
 async function loadImages() {
