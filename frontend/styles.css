@@ -1,0 +1,5 @@
+/* frontend/styles.css */
+body { font-family: sans-serif; padding:1rem; }
+.card { border:1px solid #ccc; padding:1rem; margin:1rem 0; }
+img { max-width:100%; }
+.commentForm, form { margin-top:.5rem; }

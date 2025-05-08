@@ -1,60 +1,58 @@
-const API_BASE = 'https://delightful-stone-0c4df0803.6.azurestaticapps.net';
+// frontend/app.js
+const API_BASE = 'https://imgapp-backend.azurewebsites.net/api';
 
-async function getToken() {
-  const resp = await fetch('/.auth/me');
-  const arr = await resp.json();
-  return arr[0].access_token;
-}
-
-// Load gallery
+// 1) Load & display gallery
 async function loadImages() {
-  const imgs = await fetch('/api/images').then(r=>r.json());
-  const container = document.getElementById('images');
-  container.innerHTML = '';
-  for(const img of imgs) {
-    const div = document.createElement('div');
-    div.innerHTML = `
-      <img src="${img.blobUrl}" width=200 /><br/>
-      <b>${img.metadata.title}</b><p>${img.metadata.caption}</p>
-      <div id="comments-${img._id}"></div>
-      <textarea id="txt-${img._id}"></textarea>
-      <input id="rate-${img._id}" type="number" min="1" max="5"/>
-      <button onclick="postComment('${img._id}')">Comment</button>
-    `;
-    container.appendChild(div);
-    loadComments(img._id);
-  }
-}
-
-async function loadComments(id) {
-  const comms = await fetch(`/api/images/${id}/comments`).then(r=>r.json());
-  const div = document.getElementById(`comments-${id}`);
-  div.innerHTML = comms.map(c=>`<p>${c.text} (${c.rating}★)</p>`).join('');
-}
-
-async function postComment(id) {
-  const token = await getToken();
-  const text = document.getElementById(`txt-${id}`).value;
-  const rating = document.getElementById(`rate-${id}`).value;
-  await fetch(`/api/images/${id}/comments`, {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json', 'Authorization': 'Bearer '+token },
-    body: JSON.stringify({ text, rating })
+  const gallery = document.getElementById('gallery');
+  gallery.textContent = 'Loading…';
+  const imgs = await fetch(`${API_BASE}/images`).then(r=>r.json());
+  if (!imgs.length) return gallery.textContent = 'No images yet.';
+  gallery.innerHTML = imgs.map(img=>`
+    <div class="card">
+      <img src="${img.blobUrl}" alt="${img.metadata.title}" />
+      <h3>${img.metadata.title}</h3>
+      <p>${img.metadata.description}</p>
+      <div id="comments-${img.id}">Loading comments…</div>
+      <form data-id="${img.id}" class="commentForm">
+        <input name="text" placeholder="Comment" required />
+        <input name="rating" type="number" min="1" max="5" placeholder="Rating" required />
+        <button type="submit">Post</button>
+      </form>
+    </div>
+  `).join('');
+  // Attach comment handlers & load comments
+  imgs.forEach(img=>{
+    document.querySelector(`.commentForm[data-id="${img.id}"]`)
+      .addEventListener('submit', handleComment);
+    loadComments(img.id);
   });
+}
+
+// 2) Load comments
+async function loadComments(id) {
+  const el = document.getElementById(`comments-${id}`);
+  const comms = await fetch(`${API_BASE}/images/${id}/comments`).then(r=>r.json());
+  el.innerHTML = comms.length
+    ? comms.map(c=>`<p>${c.text} — ${c.rating}/5</p>`).join('')
+    : 'No comments yet.';
+}
+
+// 3) Handle comment submit
+async function handleComment(e) {
+  e.preventDefault();
+  const id = e.target.dataset.id;
+  const data = { text:e.target.text.value, rating:+e.target.rating.value };
+  await fetch(`${API_BASE}/images/${id}/comments`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(data)
+  });
+  e.target.reset();
   loadComments(id);
 }
 
-// Upload (creators)
-document.getElementById('uploadForm')?.addEventListener('submit', async e=>{
-  e.preventDefault();
-  const token = await getToken();
-  const form = e.target;
-  const data = new FormData(form);
-  await fetch('/api/images', {
-    method:'POST',
-    headers: { 'Authorization': 'Bearer '+token },
-    body: data
-  });
-  alert('Uploaded');
-});
-window.onload = loadImages;
+// 4) Upload image
+async function uploadImage(formData) {
+  const res = await fetch(`${API_BASE}/images`, { method:'POST', body:formData });
+  return res.ok ? res.json() : {};
+}
+
