@@ -32,7 +32,12 @@ const redisClient = redis.createClient({
   password: process.env.REDIS_KEY
 });
 
-//redisClient.connect().catch(console.error);
+async function startRedis() {
+  await redisClient.connect();
+}
+startRedis();
+
+
 
 
 // --- Multer for uploads ---
