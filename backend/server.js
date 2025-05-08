@@ -31,6 +31,8 @@ const redisClient = redis.createClient({
 });
 
 redisClient.on('error', err => console.error('❌ Redis Client Error:', err));
+redisClient.on('ready', () => console.log('✅ Redis is ready'));
+redisClient.on('end', () => console.log('🔌 Redis connection closed'));
 
 // --- Multer (memory upload) ---
 const upload = multer({ storage: multer.memoryStorage() });
@@ -49,15 +51,23 @@ function requireRole(role) {
 app.get('/api/images', async (req, res) => {
   try {
     let images = [];
-    if (redisClient.isOpen) {
-      const cached = await redisClient.get('images');
-      if (cached) return res.json(JSON.parse(cached));
+    if (redisClient.isReady) {
+      try {
+        const cached = await redisClient.get('images');
+        if (cached) return res.json(JSON.parse(cached));
+      } catch (err) {
+        console.warn('Redis get failed:', err);
+      }
     }
 
     images = await imagesCol.find().sort({ createdAt: -1 }).toArray();
 
-    if (redisClient.isOpen) {
-      await redisClient.setEx('images', 30, JSON.stringify(images));
+    if (redisClient.isReady) {
+      try {
+        await redisClient.setEx('images', 30, JSON.stringify(images));
+      } catch (err) {
+        console.warn('Redis setEx failed:', err);
+      }
     }
 
     res.json(images);
@@ -83,7 +93,13 @@ app.post('/api/images', requireRole('creator'), upload.single('photo'), async (r
 
     const result = await imagesCol.insertOne(record);
 
-    if (redisClient.isOpen) await redisClient.del('images');
+    if (redisClient.isReady) {
+      try {
+        await redisClient.del('images');
+      } catch (err) {
+        console.warn('Redis del failed:', err);
+      }
+    }
 
     res.json({ id: result.insertedId, ...record });
   } catch (err) {
@@ -95,15 +111,23 @@ app.post('/api/images', requireRole('creator'), upload.single('photo'), async (r
 app.get('/api/images/:id/comments', async (req, res) => {
   const key = `comments_${req.params.id}`;
   try {
-    if (redisClient.isOpen) {
-      const cached = await redisClient.get(key);
-      if (cached) return res.json(JSON.parse(cached));
+    if (redisClient.isReady) {
+      try {
+        const cached = await redisClient.get(key);
+        if (cached) return res.json(JSON.parse(cached));
+      } catch (err) {
+        console.warn('Redis get comments failed:', err);
+      }
     }
 
     const comments = await commentsCol.find({ imageId: req.params.id }).sort({ timestamp: -1 }).toArray();
 
-    if (redisClient.isOpen) {
-      await redisClient.setEx(key, 30, JSON.stringify(comments));
+    if (redisClient.isReady) {
+      try {
+        await redisClient.setEx(key, 30, JSON.stringify(comments));
+      } catch (err) {
+        console.warn('Redis setEx comments failed:', err);
+      }
     }
 
     res.json(comments);
@@ -125,7 +149,13 @@ app.post('/api/images/:id/comments', requireRole('consumer'), async (req, res) =
 
     const result = await commentsCol.insertOne(comment);
 
-    if (redisClient.isOpen) await redisClient.del(`comments_${req.params.id}`);
+    if (redisClient.isReady) {
+      try {
+        await redisClient.del(`comments_${req.params.id}`);
+      } catch (err) {
+        console.warn('Redis del comment cache failed:', err);
+      }
+    }
 
     res.json({ id: result.insertedId, ...comment });
   } catch (err) {
