@@ -4,7 +4,6 @@ const cors = require('cors');
 const { MongoClient } = require('mongodb');
 const { BlobServiceClient } = require('@azure/storage-blob');
 const multer = require('multer');
-const redis = require('redis');
 const mockAuth = require('./middleware/mockAuth');
 
 const app = express();
@@ -20,20 +19,6 @@ let imagesCol, commentsCol;
 const blobSvc = BlobServiceClient.fromConnectionString(process.env.STORAGE_CONN);
 const containerClient = blobSvc.getContainerClient('images');
 
-// --- Redis Setup (TLS + safe connect) ---
-const redisClient = redis.createClient({
-  socket: {
-    host: process.env.REDIS_HOST,
-    port: 6380,
-    tls: true
-  },
-  password: process.env.REDIS_KEY
-});
-
-redisClient.on('error', err => console.error('❌ Redis Client Error:', err));
-redisClient.on('ready', () => console.log('✅ Redis is ready'));
-redisClient.on('end', () => console.log('🔌 Redis connection closed'));
-
 // --- Multer (memory upload) ---
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -48,28 +33,10 @@ function requireRole(role) {
 
 // --- Routes ---
 
+// List images directly from Cosmos (Redis caching disabled for demo)
 app.get('/api/images', async (req, res) => {
   try {
-    let images = [];
-    if (redisClient.isReady) {
-      try {
-        const cached = await redisClient.get('images');
-        if (cached) return res.json(JSON.parse(cached));
-      } catch (err) {
-        console.warn('Redis get failed:', err);
-      }
-    }
-
-    images = await imagesCol.find().sort({ createdAt: -1 }).toArray();
-
-    if (redisClient.isReady) {
-      try {
-        await redisClient.setEx('images', 30, JSON.stringify(images));
-      } catch (err) {
-        console.warn('Redis setEx failed:', err);
-      }
-    }
-
+    const images = await imagesCol.find().sort({ createdAt: -1 }).toArray();
     res.json(images);
   } catch (err) {
     console.error('Error in GET /api/images:', err);
@@ -77,6 +44,7 @@ app.get('/api/images', async (req, res) => {
   }
 });
 
+// Upload image (creators only)
 app.post('/api/images', requireRole('creator'), upload.single('photo'), async (req, res) => {
   try {
     const blobName = `${Date.now()}-${req.file.originalname}`;
@@ -92,15 +60,6 @@ app.post('/api/images', requireRole('creator'), upload.single('photo'), async (r
     };
 
     const result = await imagesCol.insertOne(record);
-
-    if (redisClient.isReady) {
-      try {
-        await redisClient.del('images');
-      } catch (err) {
-        console.warn('Redis del failed:', err);
-      }
-    }
-
     res.json({ id: result.insertedId, ...record });
   } catch (err) {
     console.error('Error in POST /api/images:', err);
@@ -108,35 +67,18 @@ app.post('/api/images', requireRole('creator'), upload.single('photo'), async (r
   }
 });
 
+// Get comments for image (directly from Cosmos)
 app.get('/api/images/:id/comments', async (req, res) => {
-  const key = `comments_${req.params.id}`;
   try {
-    if (redisClient.isReady) {
-      try {
-        const cached = await redisClient.get(key);
-        if (cached) return res.json(JSON.parse(cached));
-      } catch (err) {
-        console.warn('Redis get comments failed:', err);
-      }
-    }
-
     const comments = await commentsCol.find({ imageId: req.params.id }).sort({ timestamp: -1 }).toArray();
-
-    if (redisClient.isReady) {
-      try {
-        await redisClient.setEx(key, 30, JSON.stringify(comments));
-      } catch (err) {
-        console.warn('Redis setEx comments failed:', err);
-      }
-    }
-
     res.json(comments);
   } catch (err) {
-    console.error('Error in GET /api/images/:id/comments:', err);
+    console.error('Error in GET comments:', err);
     res.status(500).send('Failed to fetch comments');
   }
 });
 
+// Post comment/rating (consumers only)
 app.post('/api/images/:id/comments', requireRole('consumer'), async (req, res) => {
   try {
     const comment = {
@@ -148,40 +90,25 @@ app.post('/api/images/:id/comments', requireRole('consumer'), async (req, res) =
     };
 
     const result = await commentsCol.insertOne(comment);
-
-    if (redisClient.isReady) {
-      try {
-        await redisClient.del(`comments_${req.params.id}`);
-      } catch (err) {
-        console.warn('Redis del comment cache failed:', err);
-      }
-    }
-
     res.json({ id: result.insertedId, ...comment });
   } catch (err) {
-    console.error('Error in POST /api/images/:id/comments:', err);
+    console.error('Error in POST comments:', err);
     res.status(500).send('Failed to post comment');
   }
 });
 
-// --- Safe Startup ---
+// --- Startup: connect Mongo then start server ---
 async function startServer() {
   try {
-    console.log('🚀 Connecting services...');
-
+    console.log('🚀 Connecting to Cosmos DB...');
     await mongoClient.connect();
     const db = mongoClient.db('ImageDB');
     imagesCol = db.collection('Images');
     commentsCol = db.collection('Comments');
     console.log('✅ MongoDB connected');
 
-    await redisClient.connect();
-    console.log('✅ Redis connected');
-
     const port = process.env.PORT || 3000;
-    app.listen(port, () => {
-      console.log(`🌐 Server listening on port ${port}`);
-    });
+    app.listen(port, () => console.log(`🌐 Server listening on port ${port}`));
   } catch (err) {
     console.error('❌ Startup failure:', err);
     process.exit(1);
