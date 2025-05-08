@@ -11,8 +11,8 @@ async function loadImages() {
   demoCard.className = 'card';
   demoCard.innerHTML = `
     <img src="1.jpeg" alt="Demo Image" />
-    <h3>Image</h3>
-    <p>This is sample image</p>
+    <h3>pic</h3>
+    <p>Sample image</p>
     
   `;
   gallery.appendChild(demoCard);
