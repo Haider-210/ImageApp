@@ -14,7 +14,7 @@ app.use(express.json());
 app.use(mockAuth);
 
 // --- Cosmos DB ---
-const mongoClient = new MongoClient(process.env.COSMOS_CONN);
+const mongoClient = new MongoClient(process.env.COSMOS_CONN, { useNewUrlParser: true, useUnifiedTopology: true });
 let imagesCol, commentsCol;
 mongoClient.connect()
   .then(() => {
@@ -33,7 +33,7 @@ const blobSvc = BlobServiceClient.fromConnectionString(process.env.STORAGE_CONN)
 const containerClient = blobSvc.getContainerClient('images');
 
 // --- Redis Cache ---
-//  Create client but do NOT call connect() here at top‑level
+// Create client but do not auto-start HTTP until after connect attempt
 const redisClient = redis.createClient({
   socket: { host: process.env.REDIS_HOST, port: 6380, tls: true },
   password: process.env.REDIS_KEY
@@ -53,14 +53,22 @@ function requireRole(role) {
 
 // --- Routes ---
 
-// List images (with caching)
+// List images (with caching fallback)
 app.get('/api/images', async (req, res) => {
   try {
-    const cache = await redisClient.get('images');
-    if (cache) return res.json(JSON.parse(cache));
-
-    const imgs = await imagesCol.find().sort({ createdAt: -1 }).toArray();
-    await redisClient.setEx('images', 30, JSON.stringify(imgs));
+    let imgs;
+    try {
+      const cache = await redisClient.get('images');
+      if (cache) return res.json(JSON.parse(cache));
+    } catch (redisErr) {
+      console.warn('⚠️ Redis GET failed, falling back to DB', redisErr);
+    }
+    imgs = await imagesCol.find().sort({ createdAt: -1 }).toArray();
+    try {
+      await redisClient.setEx('images', 30, JSON.stringify(imgs));
+    } catch (redisErr) {
+      console.warn('⚠️ Redis SET failed', redisErr);
+    }
     res.json(imgs);
   } catch (err) {
     console.error('Error in GET /api/images', err);
@@ -86,7 +94,11 @@ app.post(
         createdAt: new Date()
       };
       const result = await imagesCol.insertOne(record);
-      await redisClient.del('images');
+      try {
+        await redisClient.del('images');
+      } catch (redisErr) {
+        console.warn('⚠️ Redis DEL failed', redisErr);
+      }
       res.json({ id: result.insertedId, ...record });
     } catch (err) {
       console.error('Error in POST /api/images', err);
@@ -95,18 +107,23 @@ app.post(
   }
 );
 
-// Get comments for image (with caching)
+// Get comments for image (with caching fallback)
 app.get('/api/images/:id/comments', async (req, res) => {
   try {
+    let comms;
     const key = `comments_${req.params.id}`;
-    const cache = await redisClient.get(key);
-    if (cache) return res.json(JSON.parse(cache));
-
-    const comms = await commentsCol
-      .find({ imageId: req.params.id })
-      .sort({ timestamp: -1 })
-      .toArray();
-    await redisClient.setEx(key, 30, JSON.stringify(comms));
+    try {
+      const cache = await redisClient.get(key);
+      if (cache) return res.json(JSON.parse(cache));
+    } catch (redisErr) {
+      console.warn('⚠️ Redis GET comments failed', redisErr);
+    }
+    comms = await commentsCol.find({ imageId: req.params.id }).sort({ timestamp: -1 }).toArray();
+    try {
+      await redisClient.setEx(key, 30, JSON.stringify(comms));
+    } catch (redisErr) {
+      console.warn('⚠️ Redis SET comments failed', redisErr);
+    }
     res.json(comms);
   } catch (err) {
     console.error('Error in GET comments', err);
@@ -128,7 +145,11 @@ app.post(
         timestamp: new Date()
       };
       const result = await commentsCol.insertOne(comment);
-      await redisClient.del(`comments_${req.params.id}`);
+      try {
+        await redisClient.del(`comments_${req.params.id}`);
+      } catch (redisErr) {
+        console.warn('⚠️ Redis DEL comments failed', redisErr);
+      }
       res.json({ id: result.insertedId, ...comment });
     } catch (err) {
       console.error('Error in POST comments', err);
@@ -137,10 +158,8 @@ app.post(
   }
 );
 
-// ── Remove any app.listen() here ──
-
-// ── Instead, wrap Redis connect and server start in one async block ──
-;(async () => {
+// ── Start Redis once, then HTTP server ──
+(async () => {
   try {
     await redisClient.connect();
     console.log('✅ Connected to Redis');
@@ -149,8 +168,11 @@ app.post(
     app.listen(PORT, () => console.log(`API listening on port ${PORT}`));
   } catch (err) {
     console.error('❌ Redis connection failed', err);
-    process.exit(1);
+    // Start HTTP anyway without caching
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => console.log(`API listening on port ${PORT} (no Redis)`));
   }
 })();
+
 
 
