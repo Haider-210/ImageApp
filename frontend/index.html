@@ -2,45 +2,45 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>ImageApp Gallery</title>
+  <title>Gallery</title>
   <link rel="stylesheet" href="styles.css" />
-  <style>
-    #roleSelect { margin-bottom: 1rem; }
-    #gallerySection { display: none; }
-  </style>
 </head>
 <body>
-  <h1>ImageApp</h1>
+  <header>
+    <h1>Image Gallery</h1>
+    <nav><a href="creator.html">Upload Image</a></nav>
+  </header>
 
-  <!-- Role selection buttons -->
-  <div id="roleSelect">
-    <button id="btnCreator">I am a Creator</button>
-    <button id="btnConsumer">I am a Consumer</button>
-  </div>
-
-  <!-- Consumer gallery -->
-  <section id="gallerySection">
-    <p><a href="creator.html">Go to Upload (Creators Only)</a></p>
-    <div id="gallery">Loading gallery…</div>
-  </section>
+  <div id="gallery">Loading…</div>
 
   <script src="app.js"></script>
   <script>
-    const btnCreator = document.getElementById('btnCreator');
-    const btnConsumer = document.getElementById('btnConsumer');
-    const roleSelect = document.getElementById('roleSelect');
-    const gallerySection = document.getElementById('gallerySection');
+    // enhance the comment form and like button UI after images are rendered
+    function enhanceCards() {
+      document.querySelectorAll('.card').forEach(card => {
+        // add like button if not present
+        if (!card.querySelector('.like-btn')) {
+          const likeBtn = document.createElement('button');
+          likeBtn.className = 'like-btn';
+          likeBtn.textContent = '❤️ 0';
+          likeBtn.onclick = () => {
+            let count = parseInt(likeBtn.textContent.split(' ')[1]) + 1;
+            likeBtn.textContent = `❤️ ${count}`;
+          };
+          card.insertBefore(likeBtn, card.querySelector('.commentForm'));
+        }
+      });
+    }
 
-    btnCreator.addEventListener('click', () => {
-      window.location.href = 'creator.html';
-    });
+    // Hook into loadImages completion
+    const originalLoadImages = window.loadImages;
+    window.loadImages = async function() {
+      await originalLoadImages();
+      enhanceCards();
+    };
 
-    btnConsumer.addEventListener('click', () => {
-      roleSelect.style.display = 'none';
-      gallerySection.style.display = 'block';
-      loadImages();
-    });
+    // If gallery exists on load, call loadImages (this is likely already in app.js)
+    if (document.getElementById('gallery')) loadImages();
   </script>
 </body>
 </html>
-
