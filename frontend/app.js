@@ -1,7 +1,6 @@
 // frontend/app.js
 const API_BASE = 'https://imgapp-backend-cscjdue3dfbxhvhu.uksouth-01.azurewebsites.net/api';
 
-
 // 1) Load & display gallery
 async function loadImages() {
   const gallery = document.getElementById('gallery');
@@ -21,6 +20,7 @@ async function loadImages() {
       </form>
     </div>
   `).join('');
+
   // Attach comment handlers & load comments
   imgs.forEach(img=>{
     document.querySelector(`.commentForm[data-id="${img.id}"]`)
@@ -51,9 +51,36 @@ async function handleComment(e) {
   loadComments(id);
 }
 
-// 4) Upload image
+// 4) Upload image (with demo injection hack)
 async function uploadImage(formData) {
   const res = await fetch(`${API_BASE}/images`, { method:'POST', body:formData });
-  return res.ok ? res.json() : {};
+  const data = res.ok ? await res.json() : {};
+
+  // Demo-only: open gallery and inject the new image immediately
+  if (window.location.pathname.endsWith('creator.html')) {
+    const win = window.open('index.html', '_blank');
+    win.addEventListener('load', () => {
+      const gallery = win.document.getElementById('gallery');
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <img src="${data.blobUrl}" alt="${data.metadata.title}" />
+        <h3>${data.metadata.title}</h3>
+        <p>${data.metadata.description}</p>
+        <div id="comments-${data.id}">No comments yet.</div>
+        <form data-id="${data.id}" class="commentForm">
+          <input name="text" placeholder="Comment" required />
+          <input name="rating" type="number" min="1" max="5" required />
+          <button type="submit">Post</button>
+        </form>
+      `;
+      gallery.prepend(card);
+      card.querySelector('.commentForm').addEventListener('submit', handleComment);
+    });
+  }
+
+  return data;
 }
 
+// If on gallery page, auto-load images
+if (document.getElementById('gallery')) loadImages();
